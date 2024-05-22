@@ -1,1 +1,19 @@
+# file: .github/workflows/Terraform.yml
 
+on: [push]
+
+name: azureloginsample
+
+jobs: 
+
+  executesample:
+
+    runs-on: ubuntu-latest
+    steps:
+
+    - uses: azure/login@v2
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - run: 
+        az group list
