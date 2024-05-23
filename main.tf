@@ -7,12 +7,12 @@ terraform {
   }
 
 
-backend "azurerm"{
-    resource_group_name = "demo-rg"
-    storage_account_name = "storageaccountsuda123"
-    container_name = "containersud123"
-    key = "demo.terraform.sud123"
-}
+# backend "azurerm"{
+#     resource_group_name = "demo-rg"
+#     storage_account_name = "storageaccountsuda123"
+#     container_name = "containersud123"
+#     key = "demo.terraform.sud123"
+# }
 
 }
 provider "azurerm" {
