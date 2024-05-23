@@ -20,7 +20,7 @@ provider "azurerm" {
   features {}
 }
 
-resource "azurerm_resource_group" "rg" {
-  name =  "resourcegroupsud7492"
+resource "azurerm_resource_group" "resource_group_sudarshan" {
+  name =  "Sudarshan_resource_group"
   location = "Central US"
 }
