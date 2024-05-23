@@ -1,69 +1,181 @@
-name: 'Terraform'
+# name: 'Terraform'
 
+# on:
+#   push:
+#     branches: [ "main" ]
+
+# permissions:
+#   contents: read
+
+# env:
+#   ARM_CLIENT_ID: ${{secrets.AZURE_CLIENT_ID}}
+#   ARM_CLIENT_SECRET: ${{secrets.AZURE_SECRET_ID}}
+#   ARM_SUBSCRIPTION_ID: ${{secrets.AZURE_SUBSCRIPTION_ID}}
+#   ARM_TENANT_ID: ${{secrets.AZURE_TENANT_ID}}
+#   ROOT_PATH: '${{github.workspace}}/src/terraform'
+      
+
+# jobs:
+#   terraform:
+#     name: 'Terraform Plan'
+#     runs-on: ubuntu-latest
+#     env:
+
+#       ARM_SKIP_PROVIDER_REGISTRATION: true
+
+#     # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
+#     defaults:
+#       run:
+#         shell: bash
+
+#     steps:
+#     # Checkout the repository to the GitHub Actions runner
+#     - name: Checkout
+#       uses: actions/checkout@v4
+
+#     # Install the latest version of Terraform CLI and configure the Terraform CLI configuration file with a Terraform Cloud user API token
+#     - name: Setup Terraform
+#       uses: hashicorp/setup-terraform@v3
+      
+#         # hgchgc
+
+#     # Initialize a new or existing Terraform working directory by creating initial files, loading any remote state, downloading modules, etc.
+#     - name: Terraform Init
+#       working-directory: ${{env.ROOT_PATH}}
+#       run: 
+#         export ARM_CLIENT_ID = $AZURE_CLIENT_ID
+#         export ARM_CLIENT_SECRET = $AZURE_SECRET_ID
+#         export ARM_SUBSCRIPTION_ID =$AZURE_SUBSCRIPTION_ID
+#         export ARM_TENANT_ID = $AZURE_TENANT_ID
+        
+#         terraform init
+
+#       env:
+#         ARM_CLIENT_ID: ${{secrets.AZURE_CLIENT_ID}}
+#         ARM_CLIENT_SECRET: ${{secrets.AZURE_SECRET_ID}}
+#         ARM_SUBSCRIPTION_ID: ${{secrets.AZURE_SUBSCRIPTION_ID}}
+#         ARM_TENANT_ID: ${{secrets.AZURE_TENANT_ID}}
+#     # Checks that all Terraform configuration files adhere to a canonical format
+#     # - name: Terraform Format
+#     #   run: terraform fmt -check
+
+#     # Generates an execution plan for Terraform
+#     # - name: Terraform Plan
+#     #   working-directory: ${{env.ROOT_PATH}}
+#     #   run: terraform plan -input=false
+
+#       # On push to "main", build or change infrastructure according to Terraform configuration files
+#       # Note: It is recommended to set up a required "strict" status check in your repository for "Terraform Cloud". See the documentation on "strict" required status checks for more information: https://help.github.com/en/github/administering-a-repository/types-of-required-status-checks
+    
+
+
+name: "IAC - CI/CD"
 on:
   push:
-    branches: [ "main" ]
+        branches: ['main']
+
+        paths: ['terraform/**']    
 
 permissions:
+  id-token: write
   contents: read
-
 env:
-  ARM_CLIENT_ID: ${{secrets.AZURE_CLIENT_ID}}
-  ARM_CLIENT_SECRET: ${{secrets.AZURE_SECRET_ID}}
-  ARM_SUBSCRIPTION_ID: ${{secrets.AZURE_SUBSCRIPTION_ID}}
-  ARM_TENANT_ID: ${{secrets.AZURE_TENANT_ID}}
-  ROOT_PATH: '${{github.workspace}}/src/terraform'
-      
-
+  ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID_NONPROD }}
+  ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID_NONPROD }}
+  ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET_NONPROD }}
+  TERRAFORM_DIR: ./src/terrafrm/
+  TERRAFORM_PLAN_OUTPUT: nonprod-ccdp-caip-data-infra-tfplan
+  TERRAFORM_VERSION: 1.5.7
+  DEPLOY_ENV: nonprod
+  
 jobs:
-  terraform:
-    name: 'Terraform Plan'
-    runs-on: ubuntu-latest
-    env:
-
-      ARM_SKIP_PROVIDER_REGISTRATION: true
-
-    # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
-    defaults:
-      run:
-        shell: bash
-
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: uhg-runner
     steps:
-    # Checkout the repository to the GitHub Actions runner
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v3 
 
-    # Install the latest version of Terraform CLI and configure the Terraform CLI configuration file with a Terraform Cloud user API token
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      
-        # hgchgc
+      - name: Login to Azure and set subscription
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID_NONPROD }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET_NONPROD }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID_NONPROD }}
+        shell: bash
+        run: |
+          az login --service-principal -u ${{ env.ARM_CLIENT_ID }} -p ${{ env.ARM_CLIENT_SECRET }} --tenant ${{ env.ARM_TENANT_ID }}
+          az account set --subscription ${{ env.ARM_SUBSCRIPTION_ID }}            
 
-    # Initialize a new or existing Terraform working directory by creating initial files, loading any remote state, downloading modules, etc.
-    - name: Terraform Init
-      working-directory: ${{env.ROOT_PATH}}
-      run: 
-        export ARM_CLIENT_ID = $AZURE_CLIENT_ID
-        export ARM_CLIENT_SECRET = $AZURE_SECRET_ID
-        export ARM_SUBSCRIPTION_ID =$AZURE_SUBSCRIPTION_ID
-        export ARM_TENANT_ID = $AZURE_TENANT_ID
+      - name: Setup Terraform
+        uses: uhg-actions/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Terraform Init
+        working-directory: ${{ env.TERRAFORM_DIR }}
+        run: terraform init -input=false -backend-config=tenant_id=${ARM_TENANT_ID} -backend-config=subscription_id=${ARM_SUBSCRIPTION_ID} -backend-config=client_id=${ARM_CLIENT_ID} -backend-config=client_secret=${ARM_CLIENT_SECRET} -backend-config=${{ env.DEPLOY_ENV }}-backend.conf
+       
+      - name: Terraform Validate
+        working-directory: ${{ env.TERRAFORM_DIR }}
+        run: terraform validate
+
+      # - name: Set Secrets for Plan
+      #   env:
+      #     SECRETS_CONTEXT: ${{ toJson(secrets) }}
+      #   run: |
+      #     # https://stackoverflow.com/questions/68008181/how-do-i-get-all-github-secrets-into-env-variables-for-actions-to-access-powers
+      #     EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+      #     to_envs() { jq -r "to_entries[] | \"\(.key)<<$EOF\n\(.value)\n$EOF\n\""; }
+      #     echo "$SECRETS_CONTEXT" | to_envs >> $GITHUB_ENV
         
-        terraform init
+      # - name: Terraform Plan
+      #   working-directory: ${{ env.TERRAFORM_DIR }}
+      #   run: terraform plan -var-file=terraform.tfvars -input=false -out=${{ env.TERRAFORM_PLAN_OUTPUT }}
 
-      env:
-        ARM_CLIENT_ID: ${{secrets.AZURE_CLIENT_ID}}
-        ARM_CLIENT_SECRET: ${{secrets.AZURE_SECRET_ID}}
-        ARM_SUBSCRIPTION_ID: ${{secrets.AZURE_SUBSCRIPTION_ID}}
-        ARM_TENANT_ID: ${{secrets.AZURE_TENANT_ID}}
-    # Checks that all Terraform configuration files adhere to a canonical format
-    # - name: Terraform Format
-    #   run: terraform fmt -check
+      # - name: Upload Plan Output
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: ${{ env.TERRAFORM_PLAN_OUTPUT }}
+      #     path: ${{ env.TERRAFORM_DIR }}${{ env.TERRAFORM_PLAN_OUTPUT }}
+      #     retention-days: 1
 
-    # Generates an execution plan for Terraform
-    # - name: Terraform Plan
-    #   working-directory: ${{env.ROOT_PATH}}
-    #   run: terraform plan -input=false
+  # terraform-apply:
+  #   name: Terraform Apply
+  #   runs-on: [ ubuntu-latest ]
+  #   needs: [terraform-plan]
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v3
 
-      # On push to "main", build or change infrastructure according to Terraform configuration files
-      # Note: It is recommended to set up a required "strict" status check in your repository for "Terraform Cloud". See the documentation on "strict" required status checks for more information: https://help.github.com/en/github/administering-a-repository/types-of-required-status-checks
-    
+  #     - name: Login to Azure and set subscription
+  #       env:
+  #         ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID_NONPROD }}
+  #         ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET_NONPROD }}
+  #         ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+  #         ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID_NONPROD }}
+  #         DEPLOY_ENV: nonprod
+  #       shell: bash
+  #       run: |
+  #         az login --service-principal -u ${{ env.ARM_CLIENT_ID }} -p ${{ env.ARM_CLIENT_SECRET }} --tenant ${{ env.ARM_TENANT_ID }}
+  #         az account set --subscription ${{ env.ARM_SUBSCRIPTION_ID }}  
+
+  #     - name: Setup Terraform
+  #       uses: uhg-actions/setup-terraform@v2
+  #       with:
+  #         terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+  #     - name: Download Plan Output
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: ${{ env.TERRAFORM_PLAN_OUTPUT }}
+  #         path: ${{ env.TERRAFORM_DIR }}    
+
+  #     - name: Terraform Init
+  #       working-directory: ${{ env.TERRAFORM_DIR }}
+  #       run: terraform init -input=false -backend-config=tenant_id=${ARM_TENANT_ID} -backend-config=subscription_id=${ARM_SUBSCRIPTION_ID} -backend-config=client_id=${ARM_CLIENT_ID} -backend-config=client_secret=${ARM_CLIENT_SECRET} -backend-config=${{ env.DEPLOY_ENV }}-backend.conf
+
+  #     - name: Terraform Apply
+  #       working-directory: ${{ env.TERRAFORM_DIR }}
+  #       run: terraform apply -input=false ${{ env.TERRAFORM_PLAN_OUTPUT }}
