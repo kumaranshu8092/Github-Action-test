@@ -14,8 +14,8 @@ env:
 
 
 jobs:
-  terraform:
-    name: 'Terraform initializing'
+  terraform_plan:
+    name: 'Terraform plan'
     runs-on: ubuntu-latest
     environment: production
 
@@ -36,3 +36,27 @@ jobs:
     
     - name: Terraform plan
       run: terraform plan
+
+  terraform_apply:
+    name: 'Terraform apply'
+    runs-on: ubuntu-latest
+    needs: terraform_plan
+    environment: production
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    - name: Terraform init
+      run: terraform init
+    
+    - name: Terraform apply
+      run: terraform apply    
